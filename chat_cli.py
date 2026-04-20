@@ -7,10 +7,15 @@
 """
 
 import argparse
+import re
+import shlex
 import uuid
-from typing import List, TypedDict
+from typing import Any, List, Optional, TypedDict
 
 from openai import OpenAI
+
+MAX_STOP_SEQUENCES = 4
+_FLAG_TOKEN_RE = re.compile(r"^--([\w-]+)=(.*)$")
 
 
 class ChatMessage(TypedDict):
@@ -27,7 +32,13 @@ def print_help() -> None:
     print("\nКоманды:")
     print("  /new   - создать новый чат и перейти в него")
     print("  /exit  - выйти из программы")
-    print("Любой другой текст отправляется в активный чат.\n")
+    print("Любой другой текст отправляется в активный чат.")
+    print("\nОпциональные флаги в начале строки (токены --ключ=значение):")
+    print("  --format=...              описание формата (добавляется к сообщению);")
+    print("                            значение json включает JSON mode API")
+    print("  --max-tokens=N            лимит max_tokens")
+    print("  --stop=TEXT               стоп-последовательность (до 4 раз)")
+    print('Пример: --format="краткий список" --max-tokens=200 --stop=END Что такое Python?\n')
 
 
 def new_chat() -> tuple[str, List[ChatMessage]]:
@@ -37,21 +48,106 @@ def new_chat() -> tuple[str, List[ChatMessage]]:
     return chat_id, []
 
 
+def parse_user_input(line: str) -> tuple[Optional[str], dict[str, Any], Optional[str]]:
+    """
+    Разбирает строку ввода: опциональные флаги --ключ=значение, затем текст сообщения.
+
+    Возвращает (content, api_extras, error). content is None при ошибке разбора.
+    """
+    stripped = line.strip()
+    if not stripped:
+        return None, {}, "Пустой ввод"
+
+    try:
+        parts = shlex.split(stripped)
+    except ValueError as exc:
+        return None, {}, f"Ошибка разбора строки: {exc}"
+
+    index = 0
+    format_value: Optional[str] = None
+    max_tokens: Optional[int] = None
+    stops: List[str] = []
+
+    while index < len(parts):
+        match = _FLAG_TOKEN_RE.match(parts[index])
+        if not match:
+            break
+        raw_key = match.group(1)
+        value = match.group(2)
+        key = raw_key.lower().replace("-", "_")
+
+        if key == "format":
+            format_value = value
+        elif key == "max_tokens":
+            try:
+                parsed = int(value)
+            except ValueError:
+                return None, {}, f"Неверное значение --max-tokens: ожидается целое число, получено {value!r}"
+            if parsed <= 0:
+                return None, {}, "Неверное значение --max-tokens: ожидается положительное целое"
+            max_tokens = parsed
+        elif key == "stop":
+            stops.append(value)
+        else:
+            return None, {}, f"Неизвестный флаг: --{raw_key}"
+
+        index += 1
+
+    message_tokens = parts[index:]
+    body = " ".join(message_tokens).strip()
+
+    if index > 0 and not body:
+        return None, {}, "Укажите текст сообщения после флагов"
+
+    if len(stops) > MAX_STOP_SEQUENCES:
+        return (
+            None,
+            {},
+            f"Слишком много --stop (максимум {MAX_STOP_SEQUENCES})",
+        )
+
+    api_extras: dict[str, Any] = {}
+    if max_tokens is not None:
+        api_extras["max_tokens"] = max_tokens
+
+    if stops:
+        api_extras["stop"] = stops[0] if len(stops) == 1 else stops
+
+    content = body
+
+    if format_value is not None:
+        spec = format_value.strip()
+        if spec.lower() == "json":
+            api_extras["response_format"] = {"type": "json_object"}
+            suffix = "\n\nОтветь только валидным JSON без текста вне JSON."
+            content = f"{content}{suffix}" if content else suffix.strip()
+        else:
+            block = f"\n\nТребование к формату:\n{format_value}"
+            content = f"{content}{block}" if content else block.strip()
+
+    return content, api_extras, None
+
+
 def send_message(
     client: OpenAI,
     messages: List[ChatMessage],
     model: str,
     text: str,
+    extra_params: Optional[dict[str, Any]] = None,
 ) -> None:
     """Отправляет сообщение и дополняет историю ответом ассистента."""
 
     messages.append({"role": "user", "content": text})
 
+    create_kwargs: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+    }
+    if extra_params:
+        create_kwargs.update(extra_params)
+
     try:
-        completion = client.chat.completions.create(
-            model=model,
-            messages=messages,
-        )
+        completion = client.chat.completions.create(**create_kwargs)
     except Exception as error:
         messages.pop()
         print(f"Ошибка запроса к API: {error}")
@@ -122,7 +218,12 @@ def main() -> None:
             active_chat_id, active_messages = new_chat()
             continue
 
-        send_message(client, active_messages, args.model, user_input)
+        content, api_extras, parse_error = parse_user_input(user_input)
+        if parse_error:
+            print(parse_error)
+            continue
+
+        send_message(client, active_messages, args.model, content, api_extras or None)
 
 
 if __name__ == "__main__":
