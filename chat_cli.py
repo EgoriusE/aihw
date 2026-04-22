@@ -9,6 +9,7 @@
 import argparse
 import re
 import shlex
+import time
 import uuid
 from typing import Any, List, Optional, TypedDict
 
@@ -158,12 +159,14 @@ def send_message(
     if extra_params:
         create_kwargs.update(extra_params)
 
+    start_time = time.perf_counter()
     try:
         completion = client.chat.completions.create(**create_kwargs)
     except Exception as error:
         messages.pop()
         print(f"Ошибка запроса к API: {error}")
         return
+    elapsed_seconds = time.perf_counter() - start_time
 
     raw = completion.choices[0].message.content
     assistant_text = (raw or "").strip()
@@ -173,6 +176,7 @@ def send_message(
     messages.append({"role": "assistant", "content": assistant_text})
 
     print(f"\nАссистент: {assistant_text}\n")
+    print(f"Скорость ответа сервера: {elapsed_seconds:.2f} c\n")
 
 
 def parse_args() -> argparse.Namespace:
