@@ -37,8 +37,9 @@ def print_help() -> None:
     print("  --format=...              описание формата (добавляется к сообщению);")
     print("                            значение json включает JSON mode API")
     print("  --max-tokens=N            лимит max_tokens")
+    print("  --temperature=X           температура генерации (число от 0 до 2)")
     print("  --stop=TEXT               стоп-последовательность (до 4 раз)")
-    print('Пример: --format="краткий список" --max-tokens=200 --stop=END Что такое Python?\n')
+    print('Пример: --format="краткий список" --max-tokens=200 --temperature=0.7 --stop=END Что такое Python?\n')
 
 
 def new_chat() -> tuple[str, List[ChatMessage]]:
@@ -66,6 +67,7 @@ def parse_user_input(line: str) -> tuple[Optional[str], dict[str, Any], Optional
     index = 0
     format_value: Optional[str] = None
     max_tokens: Optional[int] = None
+    temperature: Optional[float] = None
     stops: List[str] = []
 
     while index < len(parts):
@@ -86,6 +88,14 @@ def parse_user_input(line: str) -> tuple[Optional[str], dict[str, Any], Optional
             if parsed <= 0:
                 return None, {}, "Неверное значение --max-tokens: ожидается положительное целое"
             max_tokens = parsed
+        elif key == "temperature":
+            try:
+                parsed = float(value)
+            except ValueError:
+                return None, {}, f"Неверное значение --temperature: ожидается число, получено {value!r}"
+            if not 0 <= parsed <= 2:
+                return None, {}, "Неверное значение --temperature: ожидается число в диапазоне от 0 до 2"
+            temperature = parsed
         elif key == "stop":
             stops.append(value)
         else:
@@ -109,6 +119,8 @@ def parse_user_input(line: str) -> tuple[Optional[str], dict[str, Any], Optional
     api_extras: dict[str, Any] = {}
     if max_tokens is not None:
         api_extras["max_tokens"] = max_tokens
+    if temperature is not None:
+        api_extras["temperature"] = temperature
 
     if stops:
         api_extras["stop"] = stops[0] if len(stops) == 1 else stops
