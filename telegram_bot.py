@@ -64,8 +64,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not _is_authenticated(context):
         await update.message.reply_text(
             "Привет! Это NeuroAPI Telegram-бот.\n\n"
-            "Чтобы пользоваться чатом с нейросетью, введите пароль одним сообщением "
-            "(его задаёт владелец бота в переменной окружения `TELEGRAM_BOT_PASSWORD`)."
+            "Чтобы пользоваться чатом с нейросетью, введите пароль одним сообщением"
         )
         return
 

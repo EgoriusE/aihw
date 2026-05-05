@@ -77,6 +77,7 @@
 Самый оптимальный кмк по качетсву текста, объему - GPT-5.4
 Самый дешевый, простой, но при этом все со смыслом, хоть и посоветовал бтс - gpt-4.1-nano.
 
-## Telegram Bot (Day 6)
+## День 6. Первый агент
 
-Точки входа: `chat_cli.py` (CLI), `telegram_bot.py` (бот). Переменные окружения — см. `.env.example`. Доступ к LLM в боте защищён паролем (`TELEGRAM_BOT_PASSWORD`, подробности в [README.telegram-dev.md](README.telegram-dev.md)).
+Реализовал помимо CLI интерфейса, еще и точку входа (`telegram_bot.py`) в виде телеграм бота @mylilaibot. 
+
